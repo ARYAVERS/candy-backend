@@ -13,5 +13,5 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: ARYAVERS/aryavers-ci/main.yml@v1
+    - uses: ARYAVERS/aryavars-ci/main.yml@v1
 
