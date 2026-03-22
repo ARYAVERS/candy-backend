@@ -48,12 +48,12 @@ jobs:
     uses: ./.github/workflows/stage-2-security.yml
     secrets: inherit
 
-  # # ── Stage 3: Tests (sequential unit → integration → contract) ────
-  # tests:
-  #   name: "Stage 3 · Tests"
-  #   needs: fast-checks
-  #   uses: ./.github/workflows/stage-3-tests.yml
-  #   secrets: inherit
+  # ── Stage 3: Tests (sequential unit → integration → contract) ────
+  tests:
+    name: "Stage 3 · Tests"
+    needs: fast-checks
+    uses: ./.github/workflows/stage-3-tests.yml
+    secrets: inherit
 
   # # ── Stage 4: Build & container scan ───────────────────────────────
   # build:
