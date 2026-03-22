@@ -1,0 +1,22 @@
+name: App
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  CODE_CI:
+    secrets: inherit
+    uses: ARYAVERS/aryavars-ci/.github/workflows/ci.yaml@v1
+    with:
+      classification: "app-api"
+
+#  build:
+#
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#    - uses: ARYAVERS/aryavars-ci/main.yml@v1
+
