@@ -35,7 +35,7 @@ jobs:
     uses: ./.github/workflows/stage-1-fast-checks.yml
     secrets: inherit
 
-  # ── Stage 2: Security scans (parallel, needs stage 1) ─────────────
+  # ── Stage 2: Security scans (parallel, needs stage 1) ────────────
   security:
     name: "Stage 2 · Security"
     needs: fast-checks
