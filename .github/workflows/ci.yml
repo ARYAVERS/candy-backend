@@ -9,7 +9,7 @@ on:
 jobs:
   CODE_CI:
     secrets: inherit
-    uses: ARYAVERS/aryavars-ci/.github/workflows/ci.yaml@v1
+    uses: ARYAVERS/aryavars-ci/.github/workflows/ci.yaml@main
     with:
       classification: "app-api"
 
