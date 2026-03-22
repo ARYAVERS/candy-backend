@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+    types: [opened, synchronize]
   # workflow_call:
     # inputs:
     #   classification:
@@ -12,6 +12,7 @@ on:
     #     required: true
     #     type: string
     #     default: "app-api"
+    
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
