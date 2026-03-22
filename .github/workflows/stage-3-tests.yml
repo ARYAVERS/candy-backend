@@ -41,13 +41,12 @@ jobs:
             --junitxml=test-results.xml \
             -v
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Post Pytest Coverage Comment
+        uses: MishaKav/pytest-coverage-comment@main
+        if: github.event_name == 'pull_request'
         with:
-          file: coverage.xml
-          flags: unittests
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
+          pytest-xml-coverage-path: coverage.xml
+          junitxml-path: test-results.xml
 
       - name: Upload test results
         uses: actions/upload-artifact@v7

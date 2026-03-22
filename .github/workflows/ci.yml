@@ -23,6 +23,7 @@ permissions:
   security-events: write
   packages: write
   contents: read
+  pull-requests: write
 
 # ─────────────────────────────────────────────────────────────────
 # Shared env vars inherited by all called workflows
