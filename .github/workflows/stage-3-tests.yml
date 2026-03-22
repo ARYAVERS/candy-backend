@@ -33,7 +33,7 @@ jobs:
 
       - name: Run unit tests with coverage
         run: |
-          pytest tests/unit/ \
+          pytest tests/ \
             --cov=src \
             --cov-report=xml:coverage.xml \
             --cov-report=html:htmlcov \
