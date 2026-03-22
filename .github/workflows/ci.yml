@@ -12,7 +12,7 @@ on:
     #     required: true
     #     type: string
     #     default: "app-api"
-    
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,12 +57,12 @@ jobs:
     uses: ./.github/workflows/stage-3-tests.yml
     secrets: inherit
 
-  # # ── Stage 4: Build & container scan ───────────────────────────────
-  # build:
-  #   name: "Stage 4 · Build"
-  #   needs: [security, tests]
-  #   uses: ./.github/workflows/stage-4-build.yml
-  #   secrets: inherit
+  # ── Stage 4: Build & container scan ───────────────────────────────
+  build:
+    name: "Stage 4 · Build"
+    needs: [security, tests]
+    uses: ./.github/workflows/stage-4-build.yml
+    secrets: inherit
 
   # # ── Stage 5: IaC validation ────────────────────────────────────────
   # iac:
