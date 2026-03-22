@@ -14,7 +14,6 @@ jobs:
       classification: "app-api"
 
 #  build:
-#
 #    runs-on: ubuntu-latest
 #    steps:
 #    - uses: ARYAVERS/aryavars-ci/main.yml@v1
