@@ -76,6 +76,7 @@ jobs:
 
       - name: Node dependency audit
         run: |
+          npm --version
           npm audit --audit-level=high
           npx audit-ci --high
 
