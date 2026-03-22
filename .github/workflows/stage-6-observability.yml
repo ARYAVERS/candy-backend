@@ -9,7 +9,7 @@ jobs:
     name: "📊 Alerts · Dashboards · SLOs · OTel"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── Prometheus Rules ─────────────────────────────────────────────
       - name: Validate Prometheus alert rules

@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout GitOps config repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # If your k8s manifests live in a separate repo, point to it here.
           # For a mono-repo setup, this is just your current repo.
