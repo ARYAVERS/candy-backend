@@ -1,0 +1,108 @@
+name: "Stage 9 · Deploy to Production"
+
+on:
+  workflow_call:
+
+jobs:
+
+  deploy-production:
+    name: "🏭 Canary → Full Rollout → Production"
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://yourapp.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.PROD_KUBECONFIG }}" | base64 -d > kubeconfig.yaml
+          echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
+
+      # ── Phase 1: Canary at 10% ────────────────────────────────────────
+      - name: Canary deploy (10% traffic)
+        run: |
+          helm upgrade --install ${{ github.event.repository.name }}-canary ./charts \
+            --namespace production \
+            --set image.tag=sha-${{ github.sha }} \
+            --set canary.enabled=true \
+            --set canary.weight=10 \
+            --values charts/values-production.yaml \
+            --atomic --timeout 5m
+
+      - name: Monitor canary for 5 minutes
+        run: |
+          pip install requests
+          python3 scripts/monitor_canary.py \
+            --duration-minutes 5 \
+            --error-rate-threshold 0.005 \
+            --prometheus-url ${{ secrets.PROMETHEUS_URL }} \
+            --fail-on-breach
+
+      # ── Phase 2: Full rollout ─────────────────────────────────────────
+      - name: Promote canary to full rollout
+        run: |
+          helm upgrade --install ${{ github.event.repository.name }} ./charts \
+            --namespace production \
+            --set image.tag=sha-${{ github.sha }} \
+            --set canary.enabled=false \
+            --values charts/values-production.yaml \
+            --atomic --timeout 10m
+
+      # ── Verification ──────────────────────────────────────────────────
+      - name: Verify production rollout
+        run: |
+          kubectl rollout status \
+            deployment/${{ github.event.repository.name }} \
+            -n production --timeout=10m
+
+      - name: Run production smoke tests
+        run: |
+          pip install pytest requests
+          pytest tests/smoke/ -v \
+            --base-url=https://yourapp.com \
+            --timeout=60
+
+      # ── Release & rollback on failure ─────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: CHANGELOG.md
+
+      - name: Emergency rollback on failure
+        if: failure()
+        run: |
+          echo "🔄 Deploy failed — rolling back..."
+          helm rollback ${{ github.event.repository.name }} 0 \
+            --namespace production \
+            --wait --timeout 5m
+          kubectl rollout status \
+            deployment/${{ github.event.repository.name }} \
+            -n production --timeout=5m
+
+      # ── Notify ────────────────────────────────────────────────────────
+      - name: Notify Slack — deploy outcome
+        uses: slackapi/slack-github-action@v1.26.0
+        if: always()
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '🚀' || '🔥' }} Production deploy *${{ job.status }}* — tag `${{ github.ref_name }}`\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Alert on-call team on rollback
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔄 *ROLLBACK EXECUTED* for production\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.run_id }}>\ncc: <!here>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_ONCALL }}

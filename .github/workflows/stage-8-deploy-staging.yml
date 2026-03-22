@@ -1,0 +1,63 @@
+name: "Stage 8 · Deploy to Staging"
+
+on:
+  workflow_call:
+
+jobs:
+
+  deploy-staging:
+    name: "🚀 Helm Deploy → Staging"
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.yourapp.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.30.0"
+
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.STAGING_KUBECONFIG }}" | base64 -d > kubeconfig.yaml
+          echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
+
+      # ── Deploy ────────────────────────────────────────────────────────
+      - name: Helm upgrade / install to staging
+        run: |
+          helm upgrade --install ${{ github.event.repository.name }} ./charts \
+            --namespace staging \
+            --set image.tag=sha-${{ github.sha }} \
+            --set environment=staging \
+            --values charts/values-staging.yaml \
+            --atomic \
+            --timeout 5m \
+            --wait
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status \
+            deployment/${{ github.event.repository.name }} \
+            -n staging --timeout=5m
+
+      # ── Post-deploy validation ────────────────────────────────────────
+      - name: Run post-deploy smoke tests
+        run: |
+          pip install pytest requests
+          pytest tests/smoke/ -v \
+            --base-url=https://staging.yourapp.com \
+            --timeout=60
+
+      # ── Notify ────────────────────────────────────────────────────────
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1.26.0
+        if: always()
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '❌' }} Staging deploy *${{ job.status }}* — `${{ github.sha }}`\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

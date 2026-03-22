@@ -1,0 +1,115 @@
+name: "Stage 1 · Fast Checks"
+
+# Called by main.yml — not triggered directly
+on:
+  workflow_call:
+
+env:
+  PYTHON_VERSION: "3.14"
+  NODE_VERSION: "25"
+
+jobs:
+
+  # ── 1a. Secret Scanning ──────────────────────────────────────────
+  secret-scan:
+    name: "🔐 Secret Scanning"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # full history required by gitleaks
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  # ── 1b. Lint & Format ────────────────────────────────────────────
+  lint-format:
+    name: "🧹 Lint & Format"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # - name: Set up Node
+      #   uses: actions/setup-node@v6
+      #   with:
+      #     node-version: ${{ env.NODE_VERSION }}
+      #     cache: npm
+          
+      # - name: Checking node version
+      #   run: node --version
+
+      - name: Install Python linting tools
+        run: |
+          pip install black flake8 pylint mypy isort \
+                      flake8-bugbear flake8-docstrings
+
+      # - name: Install Node deps
+      #   run: npm ci
+
+      - name: Black (format check)
+        run: black src/
+
+      # - name: isort (import order)
+      #   run: isort --check-only --diff .
+
+      - name: Flake8
+        run: flake8 src/
+
+      # - name: Pylint
+      #   run: pylint src/ --fail-under=8.0
+
+      # - name: Mypy (static types)
+      #   run: mypy src/ --ignore-missing-imports --strict
+
+      # - name: ESLint
+      #   run: npx eslint . --ext .js,.ts,.jsx,.tsx --max-warnings 0
+
+      # - name: Prettier (format check)
+      #   run: npx prettier --check "**/*.{js,ts,json,yaml,yml,md}"
+
+      # - name: ShellCheck
+      #   uses: ludeeus/action-shellcheck@master
+      #   with:
+      #     scandir: ./scripts
+
+  # # ── 1c. Config & Manifest Validation ─────────────────────────────
+  # config-validation:
+  #   name: "📄 Config Validation"
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - name: Validate YAML files
+  #       uses: ibiqlik/action-yamllint@v3
+  #       with:
+  #         config_file: .yamllint.yml
+  #         file_or_dir: .
+  #         strict: true
+
+  #     - name: Validate JSON schemas
+  #       run: |
+  #         npm install -g ajv-cli
+  #         for f in config/*.json; do
+  #           ajv validate -s schemas/$(basename $f) -d $f
+  #         done
+
+  #     - name: Helm lint
+  #       run: |
+  #         curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  #         helm lint ./charts/* --strict
+
+  #     - name: Kubeconform (k8s manifest validation)
+  #       uses: docker://ghcr.io/yannh/kubeconform:latest
+  #       with:
+  #         args: "-strict -summary ./k8s/"

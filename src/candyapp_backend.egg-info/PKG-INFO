@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: candyapp-backend
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+Requires-Dist: boto3>=1.42.63
+Requires-Dist: flask>=3.1.3
+Requires-Dist: flask-cors>=5.0.0
+Requires-Dist: gunicorn>=23.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"

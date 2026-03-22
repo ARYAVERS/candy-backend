@@ -1,0 +1,53 @@
+name: "Stage 6 · SRE Observability Checks"
+
+on:
+  workflow_call:
+
+jobs:
+
+  observability-checks:
+    name: "📊 Alerts · Dashboards · SLOs · OTel"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Prometheus Rules ─────────────────────────────────────────────
+      - name: Validate Prometheus alert rules
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/monitoring:/monitoring \
+            prom/prometheus:latest \
+            promtool check rules /monitoring/alerts/*.yml
+
+      - name: Validate Prometheus recording rules
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/monitoring:/monitoring \
+            prom/prometheus:latest \
+            promtool check rules /monitoring/recording-rules/*.yml
+
+      # ── SRE-specific checks ──────────────────────────────────────────
+      - name: Check all alerts have runbook URLs
+        run: |
+          pip install pyyaml
+          python3 scripts/check_runbooks.py monitoring/alerts/
+
+      - name: Validate Grafana dashboard JSON schemas
+        run: |
+          pip install jsonschema
+          python3 scripts/validate_dashboards.py monitoring/dashboards/
+
+      - name: Check SLO definitions exist for all services
+        run: |
+          python3 scripts/check_slos.py \
+            --services-dir src/services/ \
+            --slos-dir monitoring/slos/ \
+            --fail-on-missing
+
+      # ── OpenTelemetry ────────────────────────────────────────────────
+      - name: Lint OpenTelemetry collector config
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/otel:/otel \
+            otel/opentelemetry-collector:latest \
+            --config /otel/config.yaml --dry-run

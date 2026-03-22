@@ -1,0 +1,80 @@
+name: "Stage 7 · Performance & Smoke Tests"
+
+on:
+  workflow_call:
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+
+  performance-tests:
+    name: "⚡ k6 Load Test · SLO Gate · Smoke"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install test dependencies
+        run: pip install pytest requests
+
+      # ── Spin up the full stack ────────────────────────────────────────
+      - name: Start application stack
+        run: |
+          docker compose -f docker-compose.test.yml up -d
+          sleep 15
+          docker compose -f docker-compose.test.yml ps
+
+      - name: Wait for app to be healthy
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/health; then
+              echo "✅ App is healthy"
+              break
+            fi
+            echo "Waiting for app... ($i/30)"
+            sleep 5
+          done
+
+      # ── Load test ─────────────────────────────────────────────────────
+      - name: Run k6 load test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: tests/performance/load-test.js
+          flags: --out json=k6-results.json
+        env:
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+          TARGET_URL: http://localhost:8080
+
+      # ── SLO gate ──────────────────────────────────────────────────────
+      - name: Evaluate SLO thresholds
+        run: |
+          python3 scripts/evaluate_slos.py \
+            --results k6-results.json \
+            --p99-threshold-ms 500 \
+            --error-rate-threshold 0.001 \
+            --fail-on-breach
+
+      # ── Smoke tests ───────────────────────────────────────────────────
+      - name: Run smoke tests
+        run: pytest tests/smoke/ -v --timeout=60
+        env:
+          APP_URL: http://localhost:8080
+
+      # ── Artifacts & cleanup ───────────────────────────────────────────
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-results
+          path: k6-results.json
+          retention-days: 30
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v

@@ -1,0 +1,74 @@
+name: "Stage 5 · IaC Validation & Policy"
+
+on:
+  workflow_call:
+
+jobs:
+
+  iac-validation:
+    name: "🏛️ Terraform · Checkov · tfsec · OPA"
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Terraform ────────────────────────────────────────────────────
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8"
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive ./terraform
+
+      - name: Terraform init (no backend)
+        run: terraform init -backend=false
+        working-directory: ./terraform
+
+      - name: Terraform validate
+        run: terraform validate
+        working-directory: ./terraform
+
+      - name: Terraform plan (dry run)
+        run: terraform plan -no-color -out=tfplan
+        working-directory: ./terraform
+        env:
+          TF_VAR_environment: staging
+
+      # ── Policy & Security Scans ───────────────────────────────────────
+      - name: Checkov (IaC policy scan)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: false
+          check: CKV_AWS_*,CKV_GCP_*
+
+      - name: Upload Checkov results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+
+      - name: tfsec (Terraform security)
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: terraform/
+          soft_fail: false
+
+      # ── OPA Policy ────────────────────────────────────────────────────
+      - name: OPA policy tests
+        run: |
+          curl -sSL -o opa \
+            https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x opa
+          ./opa test policies/ -v
+          ./opa eval \
+            -d policies/ \
+            -i terraform/tfplan.json \
+            "data.terraform.deny" \
+            --fail-defined

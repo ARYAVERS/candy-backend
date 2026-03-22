@@ -1,0 +1,94 @@
+name: "Stage 2 · Security Scanning"
+
+on:
+  workflow_call:
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+
+  # ── 2a. SAST — CodeQL + Semgrep + Bandit ─────────────────────────
+  sast-scan:
+    name: "🛡️ SAST Scan"
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python, javascript
+          queries: security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:python
+
+      - name: Semgrep SAST
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/default
+            p/owasp-top-ten
+            p/cwe-top-25
+            p/secrets
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Bandit (Python security linter)
+        run: |
+          pip install bandit[toml]
+          bandit -r src/ -ll -f json -o bandit-report.json
+          bandit -r src/ -ll
+
+      - name: Upload SAST reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-reports
+          path: bandit-report.json
+          retention-days: 30
+
+  # ── 2b. Dependency Vulnerability Scan ────────────────────────────
+  dependency-scan:
+    name: "📦 Dependency Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Python dependency audit (Safety)
+        run: |
+          pip install safety
+          safety check -r requirements.txt --json > safety-report.json
+          safety check -r requirements.txt
+
+      - name: Node dependency audit
+        run: |
+          npm audit --audit-level=high
+          npx audit-ci --high
+
+      - name: Snyk scan
+        uses: snyk/actions/python@master
+        continue-on-error: false
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --sarif-file-output=snyk.sarif
+
+      - name: Upload Snyk results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: snyk.sarif

@@ -1,0 +1,151 @@
+name: "Stage 9 · Argo Rollouts — Production Canary"
+
+# GitHub Actions role: update the image tag in Git and trigger the rollout.
+# Argo Rollouts role: manage the canary traffic split, analysis, and promotion
+#                     entirely inside the cluster — no scripted sleep loops.
+
+on:
+  workflow_call:
+
+jobs:
+
+  argocd-production-rollout:
+    name: "🏭 GitOps Update → Argo Rollouts Canary → Production"
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://yourapp.com
+
+    steps:
+      - name: Checkout GitOps config repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          ref: main
+
+      # ── Step 1: Bump image tag in production GitOps manifests ─────────
+      - name: Install yq
+        run: |
+          curl -sSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+            -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+
+      - name: Update image tag in production Rollout manifest
+        run: |
+          yq e -i \
+            '.spec.template.spec.containers[0].image = "ghcr.io/${{ github.repository }}:sha-${{ github.sha }}"' \
+            gitops/production/rollout.yaml
+
+          echo "Updated rollout manifest:"
+          grep "image:" gitops/production/rollout.yaml
+
+      - name: Commit and push updated image tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gitops/production/rollout.yaml
+          git commit -m "chore(prod): bump image to sha-${{ github.sha }} [skip ci]"
+          git push
+
+      # ── Step 2: Argo CD syncs the Rollout object to the cluster ───────
+      - name: Install Argo CD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Log in to Argo CD
+        run: |
+          argocd login ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_TOKEN }} \
+            --grpc-web \
+            --insecure
+
+      - name: Sync production application (applies updated Rollout manifest)
+        run: |
+          argocd app sync ${{ github.event.repository.name }}-production \
+            --revision main \
+            --prune \
+            --timeout 120
+
+      # ── Step 3: Argo Rollouts manages the canary progression ──────────
+      # The Rollout CRD (gitops/production/rollout.yaml) defines:
+      #   steps: [setWeight 10] → pause → [analysis] → setWeight 50 → pause → full
+      # We just watch from here — the cluster drives the canary, not this pipeline.
+
+      - name: Install Argo Rollouts kubectl plugin
+        run: |
+          curl -sSL https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64 \
+            -o /usr/local/bin/kubectl-argo-rollouts
+          chmod +x /usr/local/bin/kubectl-argo-rollouts
+
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.PROD_KUBECONFIG }}" | base64 -d > kubeconfig.yaml
+          echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
+
+      - name: Watch Argo Rollout canary progression
+        run: |
+          # Streams live status — exits 0 on successful promotion, non-zero on abort
+          kubectl argo rollouts get rollout ${{ github.event.repository.name }} \
+            --namespace production \
+            --watch \
+            --timeout-seconds 1800
+
+      - name: Confirm rollout is fully promoted
+        run: |
+          STATUS=$(kubectl argo rollouts status ${{ github.event.repository.name }} \
+            --namespace production \
+            --timeout 60s)
+          echo "Rollout status: $STATUS"
+          if [[ "$STATUS" != *"Healthy"* ]]; then
+            echo "❌ Rollout did not reach Healthy status"
+            exit 1
+          fi
+
+      # ── Step 4: Abort and rollback if something went wrong ────────────
+      - name: Abort rollout on pipeline failure
+        if: failure()
+        run: |
+          echo "🔄 Aborting rollout and rolling back to stable..."
+          kubectl argo rollouts abort ${{ github.event.repository.name }} \
+            --namespace production
+
+          # Undo sets the canary image back to the last stable version
+          kubectl argo rollouts undo ${{ github.event.repository.name }} \
+            --namespace production
+
+          kubectl argo rollouts status ${{ github.event.repository.name }} \
+            --namespace production \
+            --timeout 120s
+
+      # ── Step 5: Create release ────────────────────────────────────────
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: CHANGELOG.md
+
+      # ── Step 6: Notify ────────────────────────────────────────────────
+      - name: Notify Slack — production outcome
+        uses: slackapi/slack-github-action@v1.26.0
+        if: always()
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '🚀' || '🔥' }} *Argo Rollouts* production deploy *${{ job.status }}* — tag `${{ github.ref_name }}`\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Alert on-call on rollback
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔄 *ARGO ROLLOUT ABORTED + ROLLED BACK* for production\nTag: `${{ github.ref_name }}` · SHA: `${{ github.sha }}`\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.run_id }}>\ncc: <!here>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_ONCALL }}

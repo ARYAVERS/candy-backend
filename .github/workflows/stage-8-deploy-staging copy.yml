@@ -1,0 +1,103 @@
+name: "Stage 8 · Argo CD — Staging Sync"
+
+# GitHub Actions role: update the image tag in Git, then tell Argo CD to sync.
+# Argo CD role: reconcile the cluster state to match what's in Git (GitOps).
+
+on:
+  workflow_call:
+
+jobs:
+
+  argocd-staging-sync:
+    name: "🔄 Update Image Tag → Argo CD Sync → Staging"
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.yourapp.com
+
+    steps:
+      - name: Checkout GitOps config repo
+        uses: actions/checkout@v4
+        with:
+          # If your k8s manifests live in a separate repo, point to it here.
+          # For a mono-repo setup, this is just your current repo.
+          repository: ${{ github.repository }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          ref: main
+
+      # ── Step 1: Bump image tag in GitOps manifests ────────────────────
+      - name: Update image tag in staging values
+        run: |
+          curl -sSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+            -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+
+          yq e -i \
+            '.image.tag = "sha-${{ github.sha }}"' \
+            gitops/staging/values.yaml
+
+          echo "Updated gitops/staging/values.yaml:"
+          cat gitops/staging/values.yaml
+
+      - name: Commit and push updated image tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gitops/staging/values.yaml
+          git commit -m "chore(staging): bump image to sha-${{ github.sha }} [skip ci]"
+          git push
+
+      # ── Step 2: Trigger Argo CD sync ─────────────────────────────────
+      - name: Install Argo CD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Log in to Argo CD
+        run: |
+          argocd login ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_TOKEN }} \
+            --grpc-web \
+            --insecure
+
+      - name: Sync staging application
+        run: |
+          argocd app sync ${{ github.event.repository.name }}-staging \
+            --revision main \
+            --prune \
+            --force \
+            --timeout 300
+
+      # ── Step 3: Wait for healthy status ──────────────────────────────
+      - name: Wait for staging app to become healthy
+        run: |
+          argocd app wait ${{ github.event.repository.name }}-staging \
+            --health \
+            --sync \
+            --timeout 300
+
+      - name: Print final app status
+        if: always()
+        run: |
+          argocd app get ${{ github.event.repository.name }}-staging \
+            --show-params
+
+      # ── Step 4: Post-deploy smoke tests ──────────────────────────────
+      - name: Run smoke tests against staging
+        run: |
+          pip install pytest requests
+          pytest tests/smoke/ -v \
+            --base-url=https://staging.yourapp.com \
+            --timeout=60
+
+      # ── Step 5: Notify ────────────────────────────────────────────────
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1.26.0
+        if: always()
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '❌' }} *Argo CD* staging sync *${{ job.status }}* — `sha-${{ github.sha }}`\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
