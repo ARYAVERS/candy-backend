@@ -1,13 +1,17 @@
 name: 🚦 CI/CD Orchestrator
 
 on:
-  workflow_call:
-    inputs:
-      classification:
-        description: "Classification of the repository"
-        required: true
-        type: string
-        default: "app-api"
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  # workflow_call:
+    # inputs:
+    #   classification:
+    #     description: "Classification of the repository"
+    #     required: true
+    #     type: string
+    #     default: "app-api"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
