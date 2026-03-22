@@ -17,6 +17,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+  
+permissions:
+  security-events: write
+  packages: write
+  contents: read
+
 # ─────────────────────────────────────────────────────────────────
 # Shared env vars inherited by all called workflows
 # ─────────────────────────────────────────────────────────────────
