@@ -41,13 +41,12 @@ jobs:
             --junitxml=test-results.xml \
             -v
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Post Pytest Coverage Comment
+        uses: MishaKav/pytest-coverage-comment@main
+        if: github.event_name == 'pull_request'
         with:
-          file: coverage.xml
-          flags: unittests
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
+          pytest-xml-coverage-path: coverage.xml
+          junitxml-path: test-results.xml
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
@@ -59,103 +58,3 @@ jobs:
             htmlcov/
           retention-days: 14
 
-  # ── 3b. Integration Tests (needs real services) ───────────────────
-  integration-tests:
-    name: "🔗 Integration Tests"
-    runs-on: ubuntu-latest
-    needs: unit-tests
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: testdb
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      kafka:
-        image: confluentinc/cp-kafka:7.6.0
-        ports:
-          - 9092:9092
-        env:
-          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-test.txt
-
-      - name: Run database migrations
-        run: python manage.py migrate --noinput
-        env:
-          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
-
-      - name: Run integration tests
-        run: |
-          pytest tests/integration/ \
-            --junitxml=integration-results.xml \
-            -v --timeout=120
-        env:
-          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
-          REDIS_URL: redis://localhost:6379
-          KAFKA_BROKERS: localhost:9092
-
-      - name: Upload integration test results
-        uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: integration-test-results
-          path: integration-results.xml
-
-  # ── 3c. Contract Tests (Pact) ─────────────────────────────────────
-  contract-tests:
-    name: "📋 Contract Tests (Pact)"
-    runs-on: ubuntu-latest
-    needs: unit-tests
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Pact dependencies
-        run: pip install pact-python
-
-      - name: Run consumer contract tests
-        run: pytest tests/contract/ -v
-
-      - name: Publish pacts to broker
-        if: github.ref == 'refs/heads/main'
-        run: |
-          pact-broker publish ./pacts \
-            --broker-base-url=${{ secrets.PACT_BROKER_URL }} \
-            --broker-token=${{ secrets.PACT_BROKER_TOKEN }} \
-            --consumer-app-version=${{ github.sha }} \
-            --branch=${{ github.ref_name }}

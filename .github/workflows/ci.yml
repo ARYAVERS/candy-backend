@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+    types: [opened, synchronize]
   # workflow_call:
     # inputs:
     #   classification:
@@ -12,6 +12,7 @@ on:
     #     required: true
     #     type: string
     #     default: "app-api"
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,6 +23,7 @@ permissions:
   security-events: write
   packages: write
   contents: read
+  pull-requests: write
 
 # ─────────────────────────────────────────────────────────────────
 # Shared env vars inherited by all called workflows
@@ -55,12 +57,12 @@ jobs:
     uses: ./.github/workflows/stage-3-tests.yml
     secrets: inherit
 
-  # # ── Stage 4: Build & container scan ───────────────────────────────
-  # build:
-  #   name: "Stage 4 · Build"
-  #   needs: [security, tests]
-  #   uses: ./.github/workflows/stage-4-build.yml
-  #   secrets: inherit
+  # ── Stage 4: Build & container scan ───────────────────────────────
+  build:
+    name: "Stage 4 · Build"
+    needs: [security, tests]
+    uses: ./.github/workflows/stage-4-build.yml
+    secrets: inherit
 
   # # ── Stage 5: IaC validation ────────────────────────────────────────
   # iac:
