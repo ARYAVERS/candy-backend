@@ -1,12 +1,10 @@
-import pytest
-from flask import Flask
-from flask_cors import CORS
-import sys
 import os
+import sys
+import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from src.main import app
 
-from main import app
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 @pytest.fixture
