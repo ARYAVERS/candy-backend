@@ -35,7 +35,7 @@ env:
 
 jobs:
   ci:
-    uses: ARYAVERS/aryavars-ci/.github/workflows/ci.yml@main
+    uses: ARYAVERS/aryavars-ci/.github/workflows/app.yml@main
     with:
       classification: "app-api"
     secrets: inherit
