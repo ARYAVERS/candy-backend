@@ -4,7 +4,7 @@ import pytest
 
 from src.main import app
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 @pytest.fixture
