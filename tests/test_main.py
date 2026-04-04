@@ -2,7 +2,7 @@ import os
 import sys
 import pytest
 
-from main import app
+from src.main import app
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
