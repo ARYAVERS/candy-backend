@@ -39,5 +39,3 @@ jobs:
     with:
       classification: "app-api"
     secrets: inherit
-
-# Retrigger
