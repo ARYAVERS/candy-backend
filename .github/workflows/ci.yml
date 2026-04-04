@@ -5,13 +5,13 @@ on:
     branches: [ "main" ]
   pull_request:
     types: [opened, synchronize]
-  # workflow_call:
-    # inputs:
-    #   classification:
-    #     description: "Classification of the repository"
-    #     required: true
-    #     type: string
-    #     default: "app-api"
+  workflow_call:
+    inputs:
+      classification:
+        description: "Classification of the repository"
+        required: true
+        type: string
+        default: "app-api"
 
 
 concurrency:
@@ -25,9 +25,7 @@ permissions:
   contents: read
   pull-requests: write
 
-# ─────────────────────────────────────────────────────────────────
-# Shared env vars inherited by all called workflows
-# ─────────────────────────────────────────────────────────────────
+
 env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "20"
@@ -36,68 +34,8 @@ env:
   COVERAGE_THRESHOLD: "80"
 
 jobs:
-
-  # ── Stage 1: Fast checks (all parallel) ──────────────────────────
-  fast-checks:
-    name: "Stage 1 · Fast Checks"
-    uses: ./.github/workflows/stage-1-fast-checks.yml
+  ci:
+    uses: ARYAVERS/aryavars-ci/.github/workflows/ci.yml@main
+    with:
+      classification: "app-api"
     secrets: inherit
-
-  # ── Stage 2: Security scans (parallel, needs stage 1) ────────────
-  security:
-    name: "Stage 2 · Security"
-    needs: fast-checks
-    uses: ./.github/workflows/stage-2-security.yml
-    secrets: inherit
-
-  # ── Stage 3: Tests (sequential unit → integration → contract) ────
-  tests:
-    name: "Stage 3 · Tests"
-    needs: fast-checks
-    uses: ./.github/workflows/stage-3-tests.yml
-    secrets: inherit
-
-  # ── Stage 4: Build & container scan ───────────────────────────────
-  build:
-    name: "Stage 4 · Build"
-    needs: [security, tests]
-    uses: ./.github/workflows/stage-4-build.yml
-    secrets: inherit
-
-  # # ── Stage 5: IaC validation ────────────────────────────────────────
-  # iac:
-  #   name: "Stage 5 · IaC"
-  #   needs: fast-checks
-  #   uses: ./.github/workflows/stage-5-iac.yml
-  #   secrets: inherit
-
-  # # ── Stage 6: Observability checks ─────────────────────────────────
-  # observability:
-  #   name: "Stage 6 · Observability"
-  #   needs: fast-checks
-  #   uses: ./.github/workflows/stage-6-observability.yml
-  #   secrets: inherit
-
-  # # ── Stage 7: Performance & smoke tests ────────────────────────────
-  # performance:
-  #   name: "Stage 7 · Performance"
-  #   needs: [build, tests]
-  #   if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-  #   uses: ./.github/workflows/stage-7-performance.yml
-  #   secrets: inherit
-
-  # # ── Stage 8: Deploy to staging ────────────────────────────────────
-  # deploy-staging:
-  #   name: "Stage 8 · Staging Deploy"
-  #   needs: [build, performance, iac, observability]
-  #   if: github.ref == 'refs/heads/main'
-  #   uses: ./.github/workflows/stage-8-deploy-staging.yml
-  #   secrets: inherit
-
-  # # ── Stage 9: Deploy to production ─────────────────────────────────
-  # deploy-production:
-  #   name: "Stage 9 · Production Deploy"
-  #   needs: deploy-staging
-  #   if: startsWith(github.ref, 'refs/tags/v')
-  #   uses: ./.github/workflows/stage-9-deploy-production.yml
-  #   secrets: inherit
